@@ -24,7 +24,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC
 
 # ---------------------------------------------------------------------------
-# 1. MXE host requirements (see mxe/docs/index.html#requirements-debian).
+# 1. MXE host requirements (see mxe/docs/index.html#requirements-debian),
+#    plus python3-yaml, which Mesa 26 needs (not in MXE's list yet).
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
         autoconf automake autopoint bash bison bzip2 ca-certificates flex \
@@ -33,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpcre2-dev libssl-dev libtool-bin libxml-parser-perl lzip make \
         openssl p7zip-full patch perl python3 python3-mako \
         python3-packaging python3-pkg-resources python3-setuptools \
+        python3-yaml \
         python-is-python3 ruby sed sqlite3 unzip wget xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
@@ -49,19 +51,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# 3. Cross-build Qt 6 with MXE. These are the modules OpenModSim links
-#    against (src/cmake/qt.cmake), plus the Qt translations.
+# 3. Cross-build Qt 6 with MXE, in several layers. Docker caches every
+#    finished layer, so if a later step fails, a rebuild resumes from the
+#    last good one instead of starting the whole multi-hour build again.
+#    mxe-make wraps MXE's make with the target/jobs/plugin settings and drops
+#    the downloaded source tarballs afterwards to keep each layer small.
 # ---------------------------------------------------------------------------
 RUN git clone https://github.com/mxe/mxe.git /opt/mxe \
-    && cd /opt/mxe \
-    && git checkout "${MXE_REF}" \
-    && make --jobs=2 JOBS="${JOBS:-$(nproc)}" \
-           MXE_TARGETS="${MXE_TARGET}" \
-           ${MXE_PLUGIN_DIRS:+MXE_PLUGIN_DIRS="${MXE_PLUGIN_DIRS}"} \
-           qt6-qtbase qt6-qttools qt6-qtdeclarative qt6-qtserialport \
-           qt6-qtserialbus qt6-qt5compat qt6-qtsvg qt6-qttranslations \
-    && make clean-junk \
-    && rm -rf /opt/mxe/pkg /opt/mxe/.ccache
+    && git -C /opt/mxe checkout "${MXE_REF}" \
+    && printf '%s\n' \
+        '#!/bin/sh' \
+        'set -e' \
+        'cd /opt/mxe' \
+        "make --jobs=2 JOBS=\"\${JOBS:-\$(nproc)}\" MXE_TARGETS=\"${MXE_TARGET}\" ${MXE_PLUGIN_DIRS:+MXE_PLUGIN_DIRS=\"${MXE_PLUGIN_DIRS}\"} \"\$@\"" \
+        'rm -rf /opt/mxe/pkg/*' \
+        > /usr/local/bin/mxe-make \
+    && chmod +x /usr/local/bin/mxe-make \
+    && cat /usr/local/bin/mxe-make
+
+# 3a. Cross-compiler (GCC, binutils, MinGW-w64), CMake, Meson, Ninja.
+RUN mxe-make cc cmake meson-wrapper
+
+# 3b. Qt's third-party dependencies (Mesa, ICU, OpenSSL, ...).
+RUN mxe-make mesa icu4c openssl dbus freetype harfbuzz jpeg libpng \
+             mariadb-connector-c pcre2 sqlite zlib zstd
+
+# 3c. Qt base (host tools + Windows target).
+RUN mxe-make qt6-qtbase
+
+# 3d. The other Qt modules OpenModSim links against, plus translations.
+RUN mxe-make qt6-qtdeclarative qt6-qttools qt6-qtserialport \
+             qt6-qtserialbus qt6-qt5compat qt6-qtsvg qt6-qttranslations \
+    && make -C /opt/mxe clean-junk \
+    && rm -rf /opt/mxe/.ccache
 
 ENV MXE=/opt/mxe \
     MXE_TARGET=${MXE_TARGET} \
