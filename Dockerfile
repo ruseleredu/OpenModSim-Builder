@@ -1,0 +1,74 @@
+# ============================================================================
+# Windows x64 cross-build environment for OpenModSim (MXE + Qt 6).
+#
+# The slow part -- cross-building Qt 6 and its dependencies with MXE -- runs
+# once, here, and is cached in the image (expect several hours and ~15 GB of
+# disk during the build). build.sh then runs INSIDE the container and takes
+# only minutes.
+#
+#   docker build -t omodsim-mxe .
+#   docker run --rm -v "$PWD/dist:/build/dist" omodsim-mxe
+#
+# Build on an x86_64 (amd64) host: MXE needs g++-multilib / libc6-dev-i386.
+# ============================================================================
+FROM ubuntu:24.04
+
+ARG MXE_REF=master
+ARG MXE_TARGET=x86_64-w64-mingw32.shared
+# Optional newer GCC, e.g. --build-arg MXE_PLUGIN_DIRS=plugins/gcc14
+ARG MXE_PLUGIN_DIRS=
+# Parallel jobs per package (default: all cores)
+ARG JOBS=
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Etc/UTC
+
+# ---------------------------------------------------------------------------
+# 1. MXE host requirements (see mxe/docs/index.html#requirements-debian).
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        autoconf automake autopoint bash bison bzip2 ca-certificates flex \
+        g++ g++-multilib gettext git gperf intltool libc6-dev-i386 \
+        libclang-dev libgdk-pixbuf-2.0-dev libltdl-dev libgl-dev \
+        libpcre2-dev libssl-dev libtool-bin libxml-parser-perl lzip make \
+        openssl p7zip-full patch perl python3 python3-mako \
+        python3-packaging python3-pkg-resources python3-setuptools \
+        python-is-python3 ruby sed sqlite3 unzip wget xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# 2. Extra tools used by build.sh:
+#    qt6-documentation-tools : native qhelpgenerator. MXE's host Qt is built
+#                              without the SQLite driver, so its own
+#                              qhelpgenerator can't write .qch/.qhc files.
+#    nsis                    : makensis, for the optional installer.
+#    zip                     : packaging.
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        qt6-documentation-tools nsis zip \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# 3. Cross-build Qt 6 with MXE. These are the modules OpenModSim links
+#    against (src/cmake/qt.cmake), plus the Qt translations.
+# ---------------------------------------------------------------------------
+RUN git clone https://github.com/mxe/mxe.git /opt/mxe \
+    && cd /opt/mxe \
+    && git checkout "${MXE_REF}" \
+    && make --jobs=2 JOBS="${JOBS:-$(nproc)}" \
+           MXE_TARGETS="${MXE_TARGET}" \
+           ${MXE_PLUGIN_DIRS:+MXE_PLUGIN_DIRS="${MXE_PLUGIN_DIRS}"} \
+           qt6-qtbase qt6-qttools qt6-qtdeclarative qt6-qtserialport \
+           qt6-qtserialbus qt6-qt5compat qt6-qtsvg qt6-qttranslations \
+    && make clean-junk \
+    && rm -rf /opt/mxe/pkg /opt/mxe/.ccache
+
+ENV MXE=/opt/mxe \
+    MXE_TARGET=${MXE_TARGET} \
+    PATH=/opt/mxe/usr/bin:${PATH}
+
+WORKDIR /build
+COPY build.sh /build/scripts/build.sh
+RUN chmod +x /build/scripts/build.sh
+
+CMD ["/build/scripts/build.sh"]
