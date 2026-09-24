@@ -94,9 +94,22 @@ RUN mxe-make mesa icu4c openssl dbus freetype harfbuzz jpeg libpng \
 # 3c. Qt base (host tools + Windows target).
 RUN mxe-make qt6-qtbase
 
-# 3d. The other Qt modules OpenModSim links against, plus translations.
+# 3d. libdeflate. Since MXE commit 1e9a550 (2026-09-12) qt6-qtimageformats
+#     (pulled in by qt6-qttools) links with -ldeflate, but no recipe lists
+#     libdeflate as a dependency, so on a clean build it is never built and
+#     the link fails. Build it explicitly first.
+RUN mxe-make libdeflate
+
+# 3e. The other Qt modules OpenModSim links against, plus translations.
+#     If a package fails, print the error lines from its MXE log (MXE itself
+#     only shows the last few lines, which are often just warnings).
 RUN mxe-make qt6-qtdeclarative qt6-qttools qt6-qtserialport \
              qt6-qtserialbus qt6-qt5compat qt6-qtsvg qt6-qttranslations \
+    || { log="$(ls -t /opt/mxe/log/*_"${MXE_TARGET}" 2>/dev/null | head -n1)"; \
+         echo "======== errors from ${log} ========"; \
+         grep -n -E "error|Error|undefined reference|cannot find|No such file" "${log}" \
+             | grep -v -E "Werror|-Wno-error|error\.(c|h|cpp)" | tail -n 40; \
+         exit 1; } \
     && make -C /opt/mxe clean-junk \
     && rm -rf /opt/mxe/.ccache
 
