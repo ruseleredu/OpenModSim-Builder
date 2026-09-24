@@ -1,0 +1,28 @@
+#!/usr/bin/with-contenv bash
+# Serial-over-TCP bridge: exposes remote COM ports (e.g. Windows COM1 served
+# over TCP) as local serial devices OpenModSim can pick in its port list.
+#
+#   SERIAL_BRIDGES="ttyS0=host.docker.internal:7001 ttyS1=host.docker.internal:7002"
+#
+# Each entry creates /dev/<name> -> pty <-> tcp:<host>:<port>, reconnecting forever.
+# Use ttyS* names that exist in /sys/class/tty so Qt lists them.
+
+if [ -z "${SERIAL_BRIDGES}" ]; then
+    exec sleep infinity
+fi
+
+for b in ${SERIAL_BRIDGES}; do
+    dev="${b%%=*}"
+    target="${b#*=}"
+    (
+        while true; do
+            echo "[serial-bridge] /dev/${dev} <-> tcp:${target}"
+            rm -f "/dev/${dev}"
+            socat pty,link="/dev/${dev}",raw,echo=0,mode=666 \
+                  tcp:"${target}",forever,interval=2
+            sleep 2
+        done
+    ) &
+done
+
+wait

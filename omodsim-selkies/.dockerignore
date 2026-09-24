@@ -1,0 +1,14 @@
+# Keep the build context small: only Dockerfile + root/ are needed
+config/
+.git/
+.gitignore
+.env
+*.md
+*.zip
+*.tar.gz
+com_tcp_bridge.py
+docker-compose*.yml
+__pycache__/
+build/
+build-*/
+out/

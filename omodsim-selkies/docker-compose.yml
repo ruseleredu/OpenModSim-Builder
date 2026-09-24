@@ -1,0 +1,30 @@
+services:
+  openmodsim:
+    build: .
+    image: openmodsim-selkies:latest
+    container_name: openmodsim
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Sao_Paulo
+      - TITLE=Open ModSim
+      # - CUSTOM_USER=admin
+      # - PASSWORD=changeme      # enables HTTP basic auth on the web UI
+      # - HARDEN_DESKTOP=true    # single-app lockdown
+      # - HARDEN_OPENBOX=true    # also auto-restarts the app if closed
+      # Windows COM ports served over TCP (see com_tcp_bridge.py) -> /dev/ttyS*
+      - SERIAL_BRIDGES=ttyS0=host.docker.internal:7001
+      # - SERIAL_BRIDGES=ttyS0=host.docker.internal:7001 ttyS1=host.docker.internal:7002
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # needed on Linux hosts; harmless on Docker Desktop
+    volumes:
+      - ./config:/config          # app settings + your .omp projects
+    ports:
+      - "3000:3000"               # HTTP web UI
+      - "3001:3001"               # HTTPS web UI
+      - "502:502"                 # Modbus TCP
+    # For Modbus RTU, pass a serial adapter through:
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    shm_size: "1gb"
+    restart: unless-stopped
