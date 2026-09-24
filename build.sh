@@ -73,12 +73,15 @@ fi
 
 # Configure through MXE's own cmake wrapper: it loads MXE's toolchain file,
 # which sets the cross-compiler to ${MXE}/usr/bin/${MXE_TARGET}-g++ and
-# QT_HOST_PATH. (Qt's qt-cmake wrapper resolves the compiler into the host
-# tools dir, usr/<host-triplet>/bin, where it doesn't exist.)
+# QT_HOST_PATH.
 TARGET_CXX="${MXE}/usr/bin/${MXE_TARGET}-g++"
 [ -x "${TARGET_CXX}" ]                           || die "MXE cross-compiler not found at ${TARGET_CXX}"
 command -v "${MXE_TARGET}-cmake" >/dev/null 2>&1 || die "${MXE_TARGET}-cmake not found in PATH"
+# MXE_USE_CCACHE=OFF: MXE's ccache toolchain snippet would swap the compiler
+# for a ccache symlink in usr/<host-triplet>/bin that points into
+# /opt/mxe/.ccache, which the Dockerfile deletes to save space.
 CONFIGURE=("${MXE_TARGET}-cmake"
+           "-DMXE_USE_CCACHE=OFF"
            "-DCMAKE_PREFIX_PATH=${QT6};${PREFIX}"
            "-DQT_HOST_PATH=${QT_HOST}")
 

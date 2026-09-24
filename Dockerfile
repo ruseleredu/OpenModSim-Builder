@@ -121,4 +121,4 @@ WORKDIR /build
 COPY build.sh /build/scripts/build.sh
 RUN chmod +x /build/scripts/build.sh
 
-CMD ["/build/scripts/build.sh"]
+CMD ["bash", "/build/scripts/build.sh"]
