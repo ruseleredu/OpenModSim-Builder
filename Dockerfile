@@ -36,7 +36,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-packaging python3-pkg-resources python3-setuptools \
         python3-yaml \
         python-is-python3 ruby sed sqlite3 unzip wget xz-utils \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -c "import yaml, mako, packaging; print('python deps OK')"
 
 # ---------------------------------------------------------------------------
 # 2. Extra tools used by build.sh:
