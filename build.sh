@@ -71,15 +71,19 @@ if [ -z "${QHELPGENERATOR:-}" ]; then
 fi
 [ -n "${QHELPGENERATOR:-}" ] || die "qhelpgenerator not found (apt install qt6-documentation-tools)"
 
-# Use Qt's cross wrapper (it chain-loads MXE's toolchain and sets QT_HOST_PATH);
-# fall back to MXE's cmake wrapper with explicit paths.
-if [ -x "${QT6}/bin/qt-cmake" ]; then
-  CONFIGURE=("${QT6}/bin/qt-cmake")
-else
-  CONFIGURE=("${MXE_TARGET}-cmake" -DCMAKE_PREFIX_PATH="${QT6}" -DQT_HOST_PATH="${QT_HOST}")
-fi
+# Configure through MXE's own cmake wrapper: it loads MXE's toolchain file,
+# which sets the cross-compiler to ${MXE}/usr/bin/${MXE_TARGET}-g++ and
+# QT_HOST_PATH. (Qt's qt-cmake wrapper resolves the compiler into the host
+# tools dir, usr/<host-triplet>/bin, where it doesn't exist.)
+TARGET_CXX="${MXE}/usr/bin/${MXE_TARGET}-g++"
+[ -x "${TARGET_CXX}" ]                           || die "MXE cross-compiler not found at ${TARGET_CXX}"
+command -v "${MXE_TARGET}-cmake" >/dev/null 2>&1 || die "${MXE_TARGET}-cmake not found in PATH"
+CONFIGURE=("${MXE_TARGET}-cmake"
+           "-DCMAKE_PREFIX_PATH=${QT6};${PREFIX}"
+           "-DQT_HOST_PATH=${QT_HOST}")
 
 echo "==> MXE target:     ${MXE_TARGET}"
+echo "==> Compiler:       ${TARGET_CXX}"
 echo "==> Qt (target):    ${QT6}"
 echo "==> Qt (host):      ${QT_HOST}"
 echo "==> cmake:          ${HOST_CMAKE} ($("${HOST_CMAKE}" --version | head -n1))"
