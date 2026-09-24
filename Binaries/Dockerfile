@@ -21,20 +21,34 @@ ARG QT_MODULES="qtserialport qtserialbus qt5compat"
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC
 
+# apt-install: apt-get update + install, retried up to 3 times. Ubuntu's
+# mirrors are sometimes briefly out of sync while a security update is
+# published (404 on a .deb the index already lists); a fresh update fixes it.
+RUN printf '%s\n' \
+        '#!/bin/sh' \
+        'for i in 1 2 3; do' \
+        '  if apt-get update && apt-get install -y --no-install-recommends -o Acquire::Retries=3 "$@"; then' \
+        '    rm -rf /var/lib/apt/lists/*; exit 0' \
+        '  fi' \
+        '  echo "apt-install: attempt $i failed, retrying in 30s..." >&2; sleep 30' \
+        'done' \
+        'exit 1' \
+        > /usr/local/bin/apt-install \
+    && chmod +x /usr/local/bin/apt-install
+
 # ---------------------------------------------------------------------------
 # 1. Cross-compiler, build tools, packaging tools, and the shared libraries
 #    the Linux (host) Qt tools need to run (qhelpgenerator links QtGui).
 #    qt6-documentation-tools is only a fallback qhelpgenerator.
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-install \
         gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix \
         binutils-mingw-w64-x86-64 mingw-w64-x86-64-dev \
         ninja-build git ca-certificates python3 python3-venv \
         nsis zip p7zip-full \
         libglib2.0-0t64 libgl1 libegl1 libopengl0 libfontconfig1 \
         libfreetype6 libxkbcommon0 libdbus-1-3 \
-        qt6-documentation-tools \
-    && rm -rf /var/lib/apt/lists/*
+        qt6-documentation-tools
 
 # ---------------------------------------------------------------------------
 # 2. aqtinstall + a CMake new enough for OpenModSim (needs >= 3.28.4;

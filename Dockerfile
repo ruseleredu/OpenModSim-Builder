@@ -23,11 +23,26 @@ ARG JOBS=
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC
 
+# apt-install: apt-get update + install, retried up to 3 times. Ubuntu's
+# mirrors are sometimes briefly out of sync while a security update is
+# published (404 on a .deb the index already lists); a fresh update fixes it.
+RUN printf '%s\n' \
+        '#!/bin/sh' \
+        'for i in 1 2 3; do' \
+        '  if apt-get update && apt-get install -y --no-install-recommends -o Acquire::Retries=3 "$@"; then' \
+        '    rm -rf /var/lib/apt/lists/*; exit 0' \
+        '  fi' \
+        '  echo "apt-install: attempt $i failed, retrying in 30s..." >&2; sleep 30' \
+        'done' \
+        'exit 1' \
+        > /usr/local/bin/apt-install \
+    && chmod +x /usr/local/bin/apt-install
+
 # ---------------------------------------------------------------------------
 # 1. MXE host requirements (see mxe/docs/index.html#requirements-debian),
 #    plus python3-yaml, which Mesa 26 needs (not in MXE's list yet).
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-install \
         autoconf automake autopoint bash bison bzip2 ca-certificates flex \
         g++ g++-multilib gettext git gperf intltool libc6-dev-i386 \
         libclang-dev libgdk-pixbuf-2.0-dev libltdl-dev libgl-dev \
@@ -36,7 +51,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-packaging python3-pkg-resources python3-setuptools \
         python3-yaml \
         python-is-python3 ruby sed sqlite3 unzip wget xz-utils \
-    && rm -rf /var/lib/apt/lists/* \
     && python3 -c "import yaml, mako, packaging; print('python deps OK')"
 
 # ---------------------------------------------------------------------------
@@ -47,9 +61,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #    nsis                    : makensis, for the optional installer.
 #    zip                     : packaging.
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        qt6-documentation-tools nsis zip \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-install \
+        qt6-documentation-tools nsis zip
+
 
 # ---------------------------------------------------------------------------
 # 3. Cross-build Qt 6 with MXE, in several layers. Docker caches every
